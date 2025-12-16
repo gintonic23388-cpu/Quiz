@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>全科社工题库 · 10题一组（顺序/随机）</title>
+  <style>
+    :root{
+      --bg:#0b0f14; --card:#121923; --muted:#9fb0c3; --text:#e6edf3;
+      --border:#263244; --ok:#2ecc71; --bad:#ff4d4f; --btn:#1a2432; --btnHover:#202c3d;
+    }
+    body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,"PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);}
+    .wrap{max-width:980px;margin:0 auto;padding:16px;}
+    header{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;}
+    h1{font-size:18px;margin:0;}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:0 8px 30px rgba(0,0,0,.25);}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;}
+    .pill{display:inline-flex;gap:8px;align-items:center;padding:6px 10px;border:1px solid var(--border);border-radius:999px;color:var(--muted);font-size:13px;user-select:none;}
+    .pill strong{color:var(--text);font-weight:700;}
+    .btn{border:1px solid var(--border);background:transparent;color:var(--text);padding:10px 12px;border-radius:12px;cursor:pointer;font-weight:650;}
+    .btn:hover{background:rgba(255,255,255,.04);}
+    .btn:disabled{opacity:.45;cursor:not-allowed;}
+    select{background:transparent;color:var(--text);border:1px solid var(--border);border-radius:12px;padding:9px 10px;}
+    option{color:#111;}
+    .qTitle{font-size:15px;line-height:1.55;margin:10px 0 12px;}
+    .opts{display:grid;grid-template-columns:1fr;gap:10px;margin:8px 0 12px;}
+    .optBtn{border:1px solid var(--border);background:var(--btn);color:var(--text);padding:12px;border-radius:12px;cursor:pointer;text-align:left;transition:background .12s ease,border-color .12s ease;display:flex;gap:10px;align-items:flex-start;}
+    .optBtn:hover{background:var(--btnHover);}
+    .optBtn:disabled{cursor:not-allowed;opacity:.95;}
+    .optTag{width:28px;height:28px;border-radius:8px;border:1px solid var(--border);display:grid;place-items:center;font-weight:800;color:var(--muted);margin-top:1px;flex:0 0 auto;}
+    .optText{line-height:1.5;flex:1 1 auto;}
+    .correct{border-color:rgba(46,204,113,.9)!important;background:rgba(46,204,113,.14)!important;}
+    .correct .optTag{border-color:rgba(46,204,113,.9)!important;color:var(--ok)!important;}
+    .wrong{border-color:rgba(255,77,79,.95)!important;background:rgba(255,77,79,.12)!important;}
+    .wrong .optTag{border-color:rgba(255,77,79,.95)!important;color:var(--bad)!important;}
+
+    .resultBox{border:1px solid var(--border);border-radius:12px;padding:12px;background:rgba(255,255,255,.02);display:none;}
+    .resultLine{display:flex;gap:10px;align-items:center;margin:0 0 6px;font-weight:800;flex-wrap:wrap;}
+    .badge{font-size:12px;padding:4px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted);}
+    .badge.ok{border-color:rgba(46,204,113,.9);color:var(--ok);}
+    .badge.bad{border-color:rgba(255,77,79,.95);color:var(--bad);}
+    .explain{margin:0;color:var(--muted);font-size:13px;line-height:1.55;white-space:pre-wrap;}
+
+    .grid{display:grid;grid-template-columns:1fr;gap:12px;}
+    @media (min-width: 860px){ .grid{grid-template-columns: 1.2fr .8fr;} .opts{grid-template-columns:1fr 1fr;} }
+    .sheet{border:1px solid var(--border);border-radius:14px;padding:12px;background:rgba(255,255,255,.02);}
+    .sheet h2{margin:0 0 10px;font-size:14px;color:var(--muted);font-weight:750;}
+    .cardlets{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;}
+    .mini{border:1px solid var(--border);border-radius:12px;padding:10px 0;text-align:center;cursor:pointer;color:var(--muted);user-select:none;}
+    .mini:hover{background:rgba(255,255,255,.04);}
+    .mini.active{border-color:rgba(159,176,195,.9);color:var(--text);}
+    .mini.done{border-color:rgba(46,204,113,.55);color:rgba(46,204,113,.95);}
+    .mini.wrong{border-color:rgba(255,77,79,.55);color:rgba(255,77,79,.95);}
+    .mini.skip{border-style:dashed;}
+    .stat{color:var(--muted);font-size:13px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;}
+    .muted{color:var(--muted);}
+    .warn{color:rgba(255,77,79,.95);}
+    .ok{color:rgba(46,204,113,.95);}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>全科社工题库 · 10题一组（顺序/随机/错题）</h1>
+    <div class="row">
+      <span class="pill">模式：<strong id="modeLabel">—</strong></span>
+      <span class="pill">本组：<strong id="batchLabel">—</strong></span>
+      <span class="pill">本题：<strong id="posLabel">—</strong></span>
+    </div>
+  </header>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between;">
+      <div class="row">
+        <label class="pill">
+          出题模式
+          <select id="modeSel">
+            <option value="seq">顺序（按题库顺序）</option>
+            <option value="rand">随机（覆盖全量）</option>
+            <option value="wrong">错题（只练错题）</option>
+          </select>
+        </label>
+
+        <label class="pill">
+          每组题数
+          <select id="batchSizeSel">
+            <option value="10" selected>10</option>
+            <option value="20">20</option>
+            <option value="30">30</option>
+          </select>
+        </label>
+
+        <button class="btn" id="newBatchBtn">生成新一组</button>
+      </div>
+
+      <div class="row">
+        <button class="btn" id="prevBtn">上一题</button>
+        <button class="btn" id="nextBtn">下一题</button>
+        <button class="btn" id="skipBtn">跳过</button>
+        <button class="btn" id="resetQBtn">重置本题</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div>
+        <div class="qTitle" id="qTitle">加载中…</div>
+        <div class="opts" id="opts"></div>
+
+        <div class="resultBox" id="resultBox">
+          <div class="resultLine">
+            <span class="badge" id="badge">—</span>
+            <span id="resultText">—</span>
+          </div>
+          <p class="explain" id="explain">—</p>
+        </div>
+      </div>
+
+      <div class="sheet">
+        <h2>答题卡（本组）</h2>
+        <div class="cardlets" id="cardlets"></div>
+
+        <div style="height:10px"></div>
+        <div class="stat" id="stat"></div>
+
+        <div style="height:12px"></div>
+        <div class="row">
+          <button class="btn" id="clearWrongBtn">清空错题本</button>
+          <button class="btn" id="clearAllBtn">清空所有记录</button>
+        </div>
+
+        <p class="muted" style="margin:10px 0 0;font-size:12px;line-height:1.5;">
+          随机模式：系统会先把全量题目洗牌成队列，一轮内不重复；抽完自动再洗牌。<br/>
+          错题本：只记录答错过的题（本地存储）。
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <p class="muted" style="margin:12px 0 0;font-size:12px;line-height:1.5;">
+    数据文件：请在同目录放置 <code>questions.json</code>（全量题库结构化数据）。
+  </p>
+</div>
+
+<script>
+/** ---------- 存储键 ---------- */
+const LS = {
+  STATE: "sq_app_state_v2",
+  WRONG: "sq_app_wrong_v2",
+  RANDQ: "sq_app_rand_queue_v2"
+};
+
+/** ---------- 工具 ---------- */
+function readLS(key, fallback){
+  try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }catch{ return fallback; }
+}
+function writeLS(key, val){ localStorage.setItem(key, JSON.stringify(val)); }
+function shuffle(arr){
+  for(let i=arr.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [arr[i],arr[j]]=[arr[j],arr[i]];
+  }
+  return arr;
+}
+function setsEqual(a,b){
+  if(a.size!==b.size) return false;
+  for(const x of a) if(!b.has(x)) return false;
+  return true;
+}
+
+/** ---------- 全局状态 ---------- */
+let ALL = [];              // 全量题库
+let batch = [];            // 当前批次题目（数组：question）
+let batchSize = 10;
+let mode = "seq";          // seq | rand | wrong
+let pos = 0;               // 当前题在 batch 中的位置
+let seqCursor = 0;         // 顺序模式全局游标（按题库顺序推进）
+let batchNo = 1;           // 批次编号（展示用）
+
+// 记录：每题 id -> { chosen:Set, correct:boolean, skipped:boolean, ts:number }
+let stateMap = {};
+
+// 错题本：Set(questionId)
+let wrongSet = new Set();
+
+// 随机队列：数组（保存的是 questionId）
+let randQueue = [];
+let randCursor = 0;
+
+/** ---------- DOM ---------- */
+const modeSel = document.getElementById("modeSel");
+const batchSizeSel = document.getElementById("batchSizeSel");
+const newBatchBtn = document.getElementById("newBatchBtn");
+const prevBtn = document.getElementById("prevBtn");
+const nextBtn = document.getElementById("nextBtn");
+const skipBtn = document.getElementById("skipBtn");
+const resetQBtn = document.getElementById("resetQBtn");
+const clearWrongBtn = document.getElementById("clearWrongBtn");
+const clearAllBtn = document.getElementById("clearAllBtn");
+
+const modeLabel = document.getElementById("modeLabel");
+const batchLabel = document.getElementById("batchLabel");
+const posLabel = document.getElementById("posLabel");
+
+const qTitle = document.getElementById("qTitle");
+const optsEl = document.getElementById("opts");
+
+const resultBox = document.getElementById("resultBox");
+const badge = document.getElementById("badge");
+const resultText = document.getElementById("resultText");
+const explainEl = document.getElementById("explain");
+
+const cardletsEl = document.getElementById("cardlets");
+const statEl = document.getElementById("stat");
+
+/** ---------- 初始化加载 ---------- */
+async function loadQuestions(){
+  const res = await fetch("./questions.json", {cache:"no-store"});
+  if(!res.ok) throw new Error("无法加载 questions.json");
+  const data = await res.json();
+  // 基本校验
+  if(!Array.isArray(data) || data.length===0) throw new Error("questions.json 为空或格式不对");
+  for(const q of data){
+    if(!q.id || !q.type || !q.stem || !q.options || !q.answer) throw new Error("题目缺少必要字段: " + JSON.stringify(q).slice(0,80));
+    if(!Array.isArray(q.answer)) throw new Error("answer 必须是数组: " + q.id);
+  }
+  // 按题库顺序：section -> type -> qno (如果你 JSON 本身已按顺序，可不排序；这里做保险)
+  data.sort((a,b)=>{
+    const s = (a.section||"").localeCompare(b.section||"");
+    if(s!==0) return s;
+    const t = (a.type||"").localeCompare(b.type||"");
+    if(t!==0) return t;
+    return (a.qno||0)-(b.qno||0);
+  });
+
+  ALL = data;
+}
+
+/** ---------- 持久化 ---------- */
+function loadPersist(){
+  const st = readLS(LS.STATE, null);
+  if(st){
+    mode = st.mode ?? mode;
+    batchSize = st.batchSize ?? batchSize;
+    pos = st.pos ?? pos;
+    seqCursor = st.seqCursor ?? seqCursor;
+    batchNo = st.batchNo ?? batchNo;
+    stateMap = st.stateMap ?? stateMap;
+  }
+  const ws = readLS(LS.WRONG, []);
+  wrongSet = new Set(ws);
+
+  const rq = readLS(LS.RANDQ, null);
+  if(rq && Array.isArray(rq.queue)){
+    randQueue = rq.queue;
+    randCursor = rq.cursor ?? 0;
+  }
+}
+function savePersist(){
+  writeLS(LS.STATE, {mode,batchSize,pos,seqCursor,batchNo,stateMap});
+  writeLS(LS.WRONG, Array.from(wrongSet));
+  writeLS(LS.RANDQ, {queue:randQueue,cursor:randCursor});
+}
+
+/** ---------- 随机覆盖队列 ---------- */
+function ensureRandQueue(){
+  // 如果队列为空或用完，生成全量洗牌
+  if(randQueue.length===0 || randCursor >= randQueue.length){
+    randQueue = shuffle(ALL.map(q=>q.id).slice());
+    randCursor = 0;
+  }
+  savePersist();
+}
+function takeFromRandQueue(n){
+  ensureRandQueue();
+  const picked = [];
+  while(picked.length < n){
+    if(randCursor >= randQueue.length){
+      // 一轮用完，再洗牌继续
+      randQueue = shuffle(ALL.map(q=>q.id).slice());
+      randCursor = 0;
+    }
+    const id = randQueue[randCursor++];
+    picked.push(id);
+  }
+  savePersist();
+  return picked;
+}
+
+/** ---------- 生成新一组 ---------- */
+function buildBatch(){
+  const n = batchSize;
+
+  if(mode === "seq"){
+    const slice = ALL.slice(seqCursor, seqCursor + n);
+    batch = slice;
+    seqCursor += slice.length;
+    // 如果到末尾不足 n，下一次从头继续（你也可以改成停止）
+    if(batch.length < n){
+      const remain = n - batch.length;
+      seqCursor = 0;
+      batch = batch.concat(ALL.slice(0, remain));
+      seqCursor = remain;
+    }
+  }
+
+  if(mode === "rand"){
+    const ids = takeFromRandQueue(n);
+    const map = new Map(ALL.map(q=>[q.id,q]));
+    batch = ids.map(id=>map.get(id)).filter(Boolean);
+  }
+
+  if(mode === "wrong"){
+    const ids = Array.from(wrongSet);
+    if(ids.length === 0){
+      batch = [];
+    }else{
+      // 错题模式也走“覆盖队列”，确保把错题轮完再洗
+      // 简化：直接洗牌错题集合，取 n 个，不够就循环
+      const pool = shuffle(ids.slice());
+      const picked = [];
+      while(picked.length < n){
+        for(const id of pool){
+          picked.push(id);
+          if(picked.length >= n) break;
+        }
+      }
+      const map = new Map(ALL.map(q=>[q.id,q]));
+      batch = picked.map(id=>map.get(id)).filter(Boolean);
+    }
+  }
+
+  pos = 0;
+  batchNo += 1;
+  savePersist();
+}
+
+/** ---------- 判题与渲染 ---------- */
+function modeName(m){
+  if(m==="seq") return "顺序";
+  if(m==="rand") return "随机";
+  if(m==="wrong") return "错题";
+  return m;
+}
+function getCurrentQ(){
+  return batch[pos] || null;
+}
+function getRecord(qid){
+  return stateMap[qid] || null;
+}
+function setRecord(qid, rec){
+  stateMap[qid] = rec;
+  savePersist();
+}
+function clearRecord(qid){
+  delete stateMap[qid];
+  savePersist();
+}
+function renderHeader(){
+  modeLabel.textContent = modeName(mode);
+  batchLabel.textContent = `${batchNo}（${batch.length||0}题）`;
+  posLabel.textContent = batch.length ? `${pos+1}/${batch.length}` : "—";
+  modeSel.value = mode;
+  batchSizeSel.value = String(batchSize);
+}
+function renderCardlets(){
+  cardletsEl.innerHTML = "";
+  const total = batch.length;
+  for(let i=0;i<total;i++){
+    const q = batch[i];
+    const rec = q ? getRecord(q.id) : null;
+
+    const d = document.createElement("div");
+    d.className = "mini";
+    d.textContent = String(i+1);
+
+    if(i===pos) d.classList.add("active");
+
+    if(rec){
+      if(rec.skipped) d.classList.add("skip");
+      else if(rec.correct) d.classList.add("done");
+      else d.classList.add("wrong");
+    }
+
+    d.addEventListener("click", ()=>{ pos=i; savePersist(); render(); });
+    cardletsEl.appendChild(d);
+  }
+}
+function renderStat(){
+  const total = batch.length;
+  let done=0, right=0, wrong=0, skip=0;
+  for(const q of batch){
+    const rec = q ? getRecord(q.id) : null;
+    if(!rec) continue;
+    if(rec.skipped){ skip++; done++; continue; }
+    done++;
+    if(rec.correct) right++; else wrong++;
+  }
+  const acc = done===0 ? 0 : Math.round((right / (done - skip || 1)) * 100);
+  const poolInfo = (mode==="seq")
+    ? `顺序游标：${seqCursor}/${ALL.length}`
+    : (mode==="rand")
+      ? `随机队列进度：${Math.min(randCursor, randQueue.length)}/${randQueue.length || ALL.length}`
+      : `错题数：${wrongSet.size}`;
+
+  statEl.innerHTML = `
+    <span>完成：<b>${done}</b>/${total}</span>
+    <span class="ok">正确：<b>${right}</b></span>
+    <span class="warn">错误：<b>${wrong}</b></span>
+    <span>跳过：<b>${skip}</b></span>
+    <span>正确率：<b>${acc}%</b></span>
+    <span class="muted">${poolInfo}</span>
+  `;
+}
+
+function showResult(q, chosenSet){
+  resultBox.style.display = "block";
+  const ansSet = new Set(q.answer);
+  const correct = setsEqual(chosenSet, ansSet);
+
+  badge.className = "badge " + (correct ? "ok" : "bad");
+  badge.textContent = correct ? "正确" : "错误";
+
+  const chosenStr = Array.from(chosenSet).sort().join("");
+  const ansStr = Array.from(ansSet).sort().join("");
+  resultText.textContent = `你选：${chosenStr || "（无）"}；正确答案：${ansStr}`;
+
+  explainEl.textContent = q.explain || "（未提供解析）";
+}
+
+function clearResult(){
+  resultBox.style.display = "none";
+  badge.className = "badge";
+  badge.textContent = "—";
+  resultText.textContent = "—";
+  explainEl.textContent = "—";
+}
+
+function renderQuestion(){
+  const q = getCurrentQ();
+  if(!q){
+    qTitle.innerHTML = `<span class="warn">本组没有题目。</span>（错题模式下可能是你还没有错题）`;
+    optsEl.innerHTML = "";
+    clearResult();
+    return;
+  }
+
+  const typeLabel = q.type==="multi" ? "多选" : "单选";
+  qTitle.textContent = `【${q.section} · ${typeLabel} · 第${q.qno}题】${q.stem}`;
+
+  const rec = getRecord(q.id);
+  const locked = !!rec && !rec.skipped; // 作答后锁定；跳过不锁
+  const chosen = rec && rec.chosen ? new Set(rec.chosen) : new Set();
+
+  // 渲染选项（固定 A-D 顺序）
+  const letters = Object.keys(q.options).sort();
+  optsEl.innerHTML = "";
+
+  letters.forEach(L=>{
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "optBtn";
+    btn.disabled = locked;
+
+    const tag = document.createElement("div");
+    tag.className = "optTag";
+    tag.textContent = L;
+
+    const text = document.createElement("div");
+    text.className = "optText";
+    text.textContent = q.options[L];
+
+    btn.appendChild(tag);
+    btn.appendChild(text);
+
+    // 已作答：标色
+    if(locked){
+      const ansSet = new Set(q.answer);
+      if(ansSet.has(L)) btn.classList.add("correct");
+      if(chosen.has(L) && !ansSet.has(L)) btn.classList.add("wrong");
+    }
+
+    btn.addEventListener("click", ()=>{
+      // 单选：点击即提交
+      // 多选：为了“点了选项立刻出结果”，这里也采用“点击即提交”（你需要多选慢慢选的话，就要改成交互：勾选+提交）
+      const chosenNow = new Set([L]);
+
+      const ansSet = new Set(q.answer);
+      const correct = setsEqual(chosenNow, ansSet);
+
+      setRecord(q.id, {chosen:Array.from(chosenNow), correct, skipped:false, ts:Date.now()});
+
+      if(!correct) wrongSet.add(q.id);
+      else wrongSet.delete(q.id);
+
+      savePersist();
+      render(); // 重渲染后自动显示结果与锁定
+    });
+
+    optsEl.appendChild(btn);
+  });
+
+  // 结果区
+  if(rec && !rec.skipped){
+    showResult(q, new Set(rec.chosen || []));
+  }else{
+    clearResult();
+  }
+}
+
+function renderNavBtns(){
+  prevBtn.disabled = (pos<=0);
+  nextBtn.disabled = (pos >= batch.length-1);
+  skipBtn.disabled = (batch.length===0);
+  resetQBtn.disabled = (batch.length===0);
+}
+
+function render(){
+  renderHeader();
+  renderCardlets();
+  renderQuestion();
+  renderNavBtns();
+  renderStat();
+}
+
+/** ---------- 事件 ---------- */
+modeSel.addEventListener("change", ()=>{
+  mode = modeSel.value;
+  savePersist();
+  // 切模式不自动换组，避免误操作；要换组点“生成新一组”
+  render();
+});
+
+batchSizeSel.addEventListener("change", ()=>{
+  batchSize = Number(batchSizeSel.value);
+  savePersist();
+  render();
+});
+
+newBatchBtn.addEventListener("click", ()=>{
+  buildBatch();
+  render();
+});
+
+prevBtn.addEventListener("click", ()=>{
+  if(pos>0){ pos--; savePersist(); render(); }
+});
+nextBtn.addEventListener("click", ()=>{
+  if(pos<batch.length-1){ pos++; savePersist(); render(); }
+});
+
+skipBtn.addEventListener("click", ()=>{
+  const q = getCurrentQ();
+  if(!q) return;
+  setRecord(q.id, {chosen:[], correct:false, skipped:true, ts:Date.now()});
+  render();
+});
+
+resetQBtn.addEventListener("click", ()=>{
+  const q = getCurrentQ();
+  if(!q) return;
+  clearRecord(q.id);
+  // 不动错题本：错过就是错过（你要“重置就移出错题本”也可以改）
+  render();
+});
+
+clearWrongBtn.addEventListener("click", ()=>{
+  wrongSet = new Set();
+  writeLS(LS.WRONG, []);
+  render();
+});
+
+clearAllBtn.addEventListener("click", ()=>{
+  localStorage.removeItem(LS.STATE);
+  localStorage.removeItem(LS.WRONG);
+  localStorage.removeItem(LS.RANDQ);
+  // 重新初始化
+  mode = "seq"; batchSize = 10; pos = 0; seqCursor = 0; batchNo = 1; stateMap = {}; wrongSet = new Set(); randQueue=[]; randCursor=0;
+  buildBatch();
+  render();
+});
+
+/** ---------- 启动 ---------- */
+(async function init(){
+  try{
+    await loadQuestions();
+    loadPersist();
+    // 如果没有当前 batch，先生成一组
+    if(!batch || batch.length===0){
+      buildBatch();
+    }
+    render();
+  }catch(e){
+    qTitle.innerHTML = `<span class="warn">启动失败：</span>${String(e.message||e)}<br/><span class="muted">请确认 questions.json 与 index.html 在同一目录，并且 questions.json 为有效 JSON。</span>`;
+  }
+})();
+</script>
+</body>
+</html>
