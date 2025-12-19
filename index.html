@@ -33,6 +33,9 @@
     .correct .optTag{border-color:rgba(46,204,113,.9)!important;color:var(--ok)!important;}
     .wrong{border-color:rgba(255,77,79,.95)!important;background:rgba(255,77,79,.12)!important;}
     .wrong .optTag{border-color:rgba(255,77,79,.95)!important;color:var(--bad)!important;}
+    /* 多选题已选样式 */
+    .picked{border-color:rgba(159,176,195,.9)!important;background:rgba(159,176,195,.08)!important;}
+    .picked .optTag{border-color:rgba(159,176,195,.9)!important;color:var(--text)!important;}
 
     .resultBox{border:1px solid var(--border);border-radius:12px;padding:12px;background:rgba(255,255,255,.02);display:none;}
     .resultLine{display:flex;gap:10px;align-items:center;margin:0 0 6px;font-weight:800;flex-wrap:wrap;}
@@ -103,8 +106,13 @@
 
     <div class="grid">
       <div>
-        <div class="qTitle" id="qTitle">加载中…</div>
+        <div class="qTitle" id="qTitle">当前没有题目，请先选择模式和题数，再点击“生成新一组”。</div>
         <div class="opts" id="opts"></div>
+
+        <!-- 多选题提交按钮 -->
+        <div class="row" id="multiActionRow" style="margin:4px 0 8px; display:none;">
+          <button class="btn" id="submitBtn">提交本题</button>
+        </div>
 
         <div class="resultBox" id="resultBox">
           <div class="resultLine">
@@ -137,7 +145,8 @@
   </div>
 
   <p class="muted" style="margin:12px 0 0;font-size:12px;line-height:1.5;">
-    数据文件：请在同目录放置 <code>questions.json</code>（全量题库结构化数据）。
+    数据文件：请在同目录放置 <code>questions.json</code>（全量题库结构化数据）。<br/>
+    提示：请通过本地服务器（如 VSCode Live Server）打开本页面，避免浏览器阻止 <code>fetch</code> 本地文件。
   </p>
 </div>
 
@@ -174,9 +183,9 @@ let batchSize = 10;
 let mode = "seq";          // seq | rand | wrong
 let pos = 0;               // 当前题在 batch 中的位置
 let seqCursor = 0;         // 顺序模式全局游标（按题库顺序推进）
-let batchNo = 1;           // 批次编号（展示用）
+let batchNo = 0;           // 批次编号（展示用，0 表示还没生成）
 
-// 记录：每题 id -> { chosen:Set, correct:boolean, skipped:boolean, ts:number }
+// 记录：每题 id -> { chosen:Array, correct:boolean, skipped:boolean, ts:number }
 let stateMap = {};
 
 // 错题本：Set(questionId)
@@ -185,6 +194,9 @@ let wrongSet = new Set();
 // 随机队列：数组（保存的是 questionId）
 let randQueue = [];
 let randCursor = 0;
+
+// 多选题临时选择（未提交）：qid -> [A,B,...]
+let tempChosenMap = {};
 
 /** ---------- DOM ---------- */
 const modeSel = document.getElementById("modeSel");
@@ -204,6 +216,9 @@ const posLabel = document.getElementById("posLabel");
 const qTitle = document.getElementById("qTitle");
 const optsEl = document.getElementById("opts");
 
+const multiActionRow = document.getElementById("multiActionRow");
+const submitBtn = document.getElementById("submitBtn");
+
 const resultBox = document.getElementById("resultBox");
 const badge = document.getElementById("badge");
 const resultText = document.getElementById("resultText");
@@ -217,13 +232,11 @@ async function loadQuestions(){
   const res = await fetch("./questions.json", {cache:"no-store"});
   if(!res.ok) throw new Error("无法加载 questions.json");
   const data = await res.json();
-  // 基本校验
   if(!Array.isArray(data) || data.length===0) throw new Error("questions.json 为空或格式不对");
   for(const q of data){
     if(!q.id || !q.type || !q.stem || !q.options || !q.answer) throw new Error("题目缺少必要字段: " + JSON.stringify(q).slice(0,80));
     if(!Array.isArray(q.answer)) throw new Error("answer 必须是数组: " + q.id);
   }
-  // 按题库顺序：section -> type -> qno (如果你 JSON 本身已按顺序，可不排序；这里做保险)
   data.sort((a,b)=>{
     const s = (a.section||"").localeCompare(b.section||"");
     if(s!==0) return s;
@@ -231,7 +244,6 @@ async function loadQuestions(){
     if(t!==0) return t;
     return (a.qno||0)-(b.qno||0);
   });
-
   ALL = data;
 }
 
@@ -263,7 +275,6 @@ function savePersist(){
 
 /** ---------- 随机覆盖队列 ---------- */
 function ensureRandQueue(){
-  // 如果队列为空或用完，生成全量洗牌
   if(randQueue.length===0 || randCursor >= randQueue.length){
     randQueue = shuffle(ALL.map(q=>q.id).slice());
     randCursor = 0;
@@ -275,7 +286,6 @@ function takeFromRandQueue(n){
   const picked = [];
   while(picked.length < n){
     if(randCursor >= randQueue.length){
-      // 一轮用完，再洗牌继续
       randQueue = shuffle(ALL.map(q=>q.id).slice());
       randCursor = 0;
     }
@@ -289,12 +299,12 @@ function takeFromRandQueue(n){
 /** ---------- 生成新一组 ---------- */
 function buildBatch(){
   const n = batchSize;
+  tempChosenMap = {};
 
   if(mode === "seq"){
     const slice = ALL.slice(seqCursor, seqCursor + n);
     batch = slice;
     seqCursor += slice.length;
-    // 如果到末尾不足 n，下一次从头继续（你也可以改成停止）
     if(batch.length < n){
       const remain = n - batch.length;
       seqCursor = 0;
@@ -314,8 +324,6 @@ function buildBatch(){
     if(ids.length === 0){
       batch = [];
     }else{
-      // 错题模式也走“覆盖队列”，确保把错题轮完再洗
-      // 简化：直接洗牌错题集合，取 n 个，不够就循环
       const pool = shuffle(ids.slice());
       const picked = [];
       while(picked.length < n){
@@ -357,7 +365,8 @@ function clearRecord(qid){
 }
 function renderHeader(){
   modeLabel.textContent = modeName(mode);
-  batchLabel.textContent = `${batchNo}（${batch.length||0}题）`;
+  const bn = batchNo > 0 ? batchNo : "—";
+  batchLabel.textContent = `${bn}（${batch.length||0}题）`;
   posLabel.textContent = batch.length ? `${pos+1}/${batch.length}` : "—";
   modeSel.value = mode;
   batchSizeSel.value = String(batchSize);
@@ -381,7 +390,11 @@ function renderCardlets(){
       else d.classList.add("wrong");
     }
 
-    d.addEventListener("click", ()=>{ pos=i; savePersist(); render(); });
+    d.addEventListener("click", ()=>{
+      pos=i;
+      savePersist();
+      render();
+    });
     cardletsEl.appendChild(d);
   }
 }
@@ -412,21 +425,6 @@ function renderStat(){
   `;
 }
 
-function showResult(q, chosenSet){
-  resultBox.style.display = "block";
-  const ansSet = new Set(q.answer);
-  const correct = setsEqual(chosenSet, ansSet);
-
-  badge.className = "badge " + (correct ? "ok" : "bad");
-  badge.textContent = correct ? "正确" : "错误";
-
-  const chosenStr = Array.from(chosenSet).sort().join("");
-  const ansStr = Array.from(ansSet).sort().join("");
-  resultText.textContent = `你选：${chosenStr || "（无）"}；正确答案：${ansStr}`;
-
-  explainEl.textContent = q.explain || "（未提供解析）";
-}
-
 function clearResult(){
   resultBox.style.display = "none";
   badge.className = "badge";
@@ -438,20 +436,32 @@ function clearResult(){
 function renderQuestion(){
   const q = getCurrentQ();
   if(!q){
-    qTitle.innerHTML = `<span class="warn">本组没有题目。</span>（错题模式下可能是你还没有错题）`;
+    qTitle.innerHTML = `<span class="warn">本组没有题目。</span> 请先选择模式和题数，然后点击“生成新一组”。`;
     optsEl.innerHTML = "";
+    multiActionRow.style.display = "none";
     clearResult();
     return;
   }
 
-  const typeLabel = q.type==="multi" ? "多选" : "单选";
+  const isMulti = q.type === "multi";
+  const typeLabel = isMulti ? "多选" : "单选";
   qTitle.textContent = `【${q.section} · ${typeLabel} · 第${q.qno}题】${q.stem}`;
 
   const rec = getRecord(q.id);
-  const locked = !!rec && !rec.skipped; // 作答后锁定；跳过不锁
+  const locked = !!rec && !rec.skipped;
   const chosen = rec && rec.chosen ? new Set(rec.chosen) : new Set();
+  const tempChosen = (!locked && isMulti && tempChosenMap[q.id])
+    ? new Set(tempChosenMap[q.id])
+    : new Set();
 
-  // 渲染选项（固定 A-D 顺序）
+  // 多选题提交按钮显隐
+  if(isMulti && !locked){
+    multiActionRow.style.display = "flex";
+    submitBtn.disabled = false;
+  }else{
+    multiActionRow.style.display = "none";
+  }
+
   const letters = Object.keys(q.options).sort();
   optsEl.innerHTML = "";
 
@@ -472,44 +482,58 @@ function renderQuestion(){
     btn.appendChild(tag);
     btn.appendChild(text);
 
-    // 已作答：标色
     if(locked){
       const ansSet = new Set(q.answer);
       if(ansSet.has(L)) btn.classList.add("correct");
       if(chosen.has(L) && !ansSet.has(L)) btn.classList.add("wrong");
+    }else if(isMulti && tempChosen.has(L)){
+      btn.classList.add("picked");
     }
 
     btn.addEventListener("click", ()=>{
-      // 单选：点击即提交
-      // 多选：为了“点了选项立刻出结果”，这里也采用“点击即提交”（你需要多选慢慢选的话，就要改成交互：勾选+提交）
-      const chosenNow = new Set([L]);
+      if(locked) return;
+      if(isMulti){
+        // 多选：只切换选中状态，不立即判题
+        if(tempChosen.has(L)) tempChosen.delete(L);
+        else tempChosen.add(L);
+        tempChosenMap[q.id] = Array.from(tempChosen);
+        renderQuestion();
+      }else{
+        // 单选：点击即提交并自动跳下一题
+        const chosenNow = new Set([L]);
+        const ansSet = new Set(q.answer);
+        const correct = setsEqual(chosenNow, ansSet);
 
-      const ansSet = new Set(q.answer);
-      const correct = setsEqual(chosenNow, ansSet);
+        setRecord(q.id, {chosen:Array.from(chosenNow), correct, skipped:false, ts:Date.now()});
 
-      setRecord(q.id, {chosen:Array.from(chosenNow), correct, skipped:false, ts:Date.now()});
+        if(!correct) wrongSet.add(q.id);
+        else wrongSet.delete(q.id);
 
-      if(!correct) wrongSet.add(q.id);
-      else wrongSet.delete(q.id);
+        // 显示上一题结果
+        const chosenStr = Array.from(chosenNow).sort().join("");
+        const ansStr = Array.from(ansSet).sort().join("");
+        badge.className = "badge " + (correct ? "ok" : "bad");
+        badge.textContent = correct ? "上一题：正确" : "上一题：错误";
+        resultText.textContent = `你选：${chosenStr || "（无）"}；正确答案：${ansStr}`;
+        explainEl.textContent = q.explain || "（未提供解析）";
+        resultBox.style.display = "block";
 
-      savePersist();
-      render(); // 重渲染后自动显示结果与锁定
+        // 自动跳到下一题
+        if(pos < batch.length-1){ pos++; }
+        savePersist();
+        render();
+      }
     });
 
     optsEl.appendChild(btn);
   });
 
-  // 结果区
-  if(rec && !rec.skipped){
-    showResult(q, new Set(rec.chosen || []));
-  }else{
-    clearResult();
-  }
+  // 不在这里自动显示结果，结果区专门显示“上一题”判定
 }
 
 function renderNavBtns(){
-  prevBtn.disabled = (pos<=0);
-  nextBtn.disabled = (pos >= batch.length-1);
+  prevBtn.disabled = (pos<=0 || batch.length===0);
+  nextBtn.disabled = (pos >= batch.length-1 || batch.length===0);
   skipBtn.disabled = (batch.length===0);
   resetQBtn.disabled = (batch.length===0);
 }
@@ -526,7 +550,6 @@ function render(){
 modeSel.addEventListener("change", ()=>{
   mode = modeSel.value;
   savePersist();
-  // 切模式不自动换组，避免误操作；要换组点“生成新一组”
   render();
 });
 
@@ -552,6 +575,7 @@ skipBtn.addEventListener("click", ()=>{
   const q = getCurrentQ();
   if(!q) return;
   setRecord(q.id, {chosen:[], correct:false, skipped:true, ts:Date.now()});
+  delete tempChosenMap[q.id];
   render();
 });
 
@@ -559,7 +583,7 @@ resetQBtn.addEventListener("click", ()=>{
   const q = getCurrentQ();
   if(!q) return;
   clearRecord(q.id);
-  // 不动错题本：错过就是错过（你要“重置就移出错题本”也可以改）
+  delete tempChosenMap[q.id];
   render();
 });
 
@@ -573,9 +597,50 @@ clearAllBtn.addEventListener("click", ()=>{
   localStorage.removeItem(LS.STATE);
   localStorage.removeItem(LS.WRONG);
   localStorage.removeItem(LS.RANDQ);
-  // 重新初始化
-  mode = "seq"; batchSize = 10; pos = 0; seqCursor = 0; batchNo = 1; stateMap = {}; wrongSet = new Set(); randQueue=[]; randCursor=0;
-  buildBatch();
+  mode = "seq";
+  batchSize = 10;
+  pos = 0;
+  seqCursor = 0;
+  batchNo = 0;
+  stateMap = {};
+  wrongSet = new Set();
+  randQueue = [];
+  randCursor = 0;
+  batch = [];
+  tempChosenMap = {};
+  savePersist();
+  clearResult();
+  render();
+});
+
+// 多选题提交按钮：判题 + 自动跳下一题
+submitBtn.addEventListener("click", ()=>{
+  const q = getCurrentQ();
+  if(!q || q.type !== "multi") return;
+  const temp = tempChosenMap[q.id] ? new Set(tempChosenMap[q.id]) : new Set();
+  if(temp.size === 0){
+    alert("请先选择至少一个选项");
+    return;
+  }
+  const ansSet = new Set(q.answer);
+  const correct = setsEqual(temp, ansSet);
+
+  setRecord(q.id, {chosen:Array.from(temp), correct, skipped:false, ts:Date.now()});
+  if(!correct) wrongSet.add(q.id);
+  else wrongSet.delete(q.id);
+
+  const chosenStr = Array.from(temp).sort().join("");
+  const ansStr = Array.from(ansSet).sort().join("");
+  badge.className = "badge " + (correct ? "ok" : "bad");
+  badge.textContent = correct ? "上一题：正确" : "上一题：错误";
+  resultText.textContent = `你选：${chosenStr || "（无）"}；正确答案：${ansStr}`;
+  explainEl.textContent = q.explain || "（未提供解析）";
+  resultBox.style.display = "block";
+
+  delete tempChosenMap[q.id];
+  // 自动跳下一题
+  if(pos < batch.length-1){ pos++; }
+  savePersist();
   render();
 });
 
@@ -584,13 +649,10 @@ clearAllBtn.addEventListener("click", ()=>{
   try{
     await loadQuestions();
     loadPersist();
-    // 如果没有当前 batch，先生成一组
-    if(!batch || batch.length===0){
-      buildBatch();
-    }
+    // 不再自动生成一组题，让用户自己选择模式和题数后点击“生成新一组”
     render();
   }catch(e){
-    qTitle.innerHTML = `<span class="warn">启动失败：</span>${String(e.message||e)}<br/><span class="muted">请确认 questions.json 与 index.html 在同一目录，并且 questions.json 为有效 JSON。</span>`;
+    qTitle.innerHTML = `<span class="warn">启动失败：</span>${String(e.message||e)}<br/><span class="muted">请确认 questions.json 与 index.html 在同一目录，并且通过本地服务器打开。</span>`;
   }
 })();
 </script>
